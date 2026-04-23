@@ -1,6 +1,6 @@
 # Trip Calculator
 
-**Trip Calculator** is a Python desktop application that helps you estimate the total fuel required and the cost for a trip based on your route, stops, fuel efficiency, and fuel price. It features a user-friendly GUI built with Tkinter and leverages the OpenRouteService API for accurate road distances.
+**Trip Calculator** is a Python desktop application that helps you estimate the total fuel required and the cost for a trip based on your route, stops, fuel efficiency, and fuel price. It features a user-friendly GUI built with PySide6 and leverages the OpenRouteService API for accurate road distances.
 
 ## Features
 
@@ -8,12 +8,12 @@
 - Calculate total trip cost
 - Save trip data to an Excel file
 - Load and save activities
-- Simple GUI (Tkinter)
+- Simple GUI (PySide6)
 
 ## Requirements
 
 - Python 3.9+
-- Tkinter
+- PySide6
 - requests
 - openpyxl
 
