@@ -1,208 +1,491 @@
-import tkinter as tk
-from tkinter import messagebox, filedialog, ttk
-import requests
+import sys
 import os
-import openpyxl
-from openpyxl import Workbook
-from config import ORS_API_KEY
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QLineEdit, QTextEdit, QPushButton, QCheckBox, QComboBox,
+    QFrame, QScrollArea, QSizePolicy, QFileDialog, QMessageBox
+)
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QFont, QColor, QPalette, QIcon
 
-base_dr = os.path.dirname(__file__)
-ACTIVITIES_FILE = os.path.join(base_dr, "Activities.txt")
+from trip_logic import load_activities, process_trip
 
-def get_coordinates(address):
-    url = "https://api.openrouteservice.org/geocode/search"
-    params = {"api_key": ORS_API_KEY, "text": address}
-    response = requests.get(url, params=params)
-    data = response.json()
-    if response.status_code != 200 or "features" not in data:
-        raise Exception(f"Error geocoding address: {data.get('error', 'Unknown error')}")
-    try:
-        feature = data["features"][0]
-        coordinates = feature["geometry"]["coordinates"]
-        location_name = feature["properties"]["label"]
-        return (coordinates[1], coordinates[0]), location_name  # Return (lat, lon) and name
-    except (IndexError, KeyError):
-        raise Exception("Invalid geocoding response structure")
+base_dir = os.path.dirname(__file__)
+ACTIVITIES_FILE = os.path.join(base_dir, "Activities.txt")
 
-def get_road_distance(start, end):
-    url = "https://api.openrouteservice.org/v2/directions/driving-car"
-    headers = {"Authorization": ORS_API_KEY}
-    body = {"coordinates": [[start[1], start[0]], [end[1], end[0]]]}
-    response = requests.post(url, headers=headers, json=body)
-    data = response.json()
-    if response.status_code != 200 or "routes" not in data:
-        raise Exception(f"Error fetching route distance: {data.get('error', 'Unknown error')}")
-    try:
-        route = data["routes"][0]
-        distance_meters = route["summary"]["distance"]
-        return distance_meters / 1000  # Convert to kilometers
-    except (IndexError, KeyError):
-        raise Exception("Invalid response structure from API")
+# ── Palette ────────────────────────────────────────────────────────────────────
+BG          = "#0f0f0f"
+SURFACE     = "#181818"
+CARD        = "#1e1e1e"
+BORDER      = "#2a2a2a"
+BORDER_FOCUS= "#3a7bd5"
+TEXT        = "#f0f0f0"
+TEXT_MUTED  = "#888888"
+ACCENT      = "#3a7bd5"
+ACCENT_HOVER= "#4a8be5"
+DANGER      = "#e05252"
+SUCCESS     = "#3acca0"
+INPUT_BG    = "#141414"
 
-def calculate_fuel_needed(distance, fuel_efficiency):
-    return distance / fuel_efficiency
 
-def load_activities():
-    #Load activities and their file paths from the activities file.
-    activities = {}
-    if os.path.exists(ACTIVITIES_FILE):
-        with open(ACTIVITIES_FILE, "r") as file:
-            for line in file:
-                name, path = line.strip().split("=", 1)
-                activities[name] = path
-    return activities
+STYLESHEET = f"""
+/* ── Root ── */
+QMainWindow, QWidget#root {{
+    background: {BG};
+}}
 
-def save_activity(activity_name, file_path):
-    #Save a new activity to the activities file.
-    with open(ACTIVITIES_FILE, "a") as file:
-        file.write(f"{activity_name}={file_path}\n")
+/* ── Scroll area ── */
+QScrollArea {{
+    background: transparent;
+    border: none;
+}}
+QScrollBar:vertical {{
+    background: {SURFACE};
+    width: 6px;
+    border-radius: 3px;
+}}
+QScrollBar::handle:vertical {{
+    background: {BORDER};
+    border-radius: 3px;
+    min-height: 24px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: {TEXT_MUTED};
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0;
+}}
 
-def save_trip_to_excel(activity_name, trip_data):
-    #Save trip data to an Excel file for the given activity.
-    activities = load_activities()
-    if activity_name in activities:
-        file_path = activities[activity_name]
-    else:
-        # Create a new Excel file for the activity
-        file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
-        if not file_path:
-            raise Exception("No file selected for the new activity.")
-        save_activity(activity_name, file_path)
+/* ── Card ── */
+QFrame#card {{
+    background: {CARD};
+    border: 1px solid {BORDER};
+    border-radius: 10px;
+}}
 
-    # Open or create the Excel file
-    if os.path.exists(file_path):
-        workbook = openpyxl.load_workbook(file_path)
-    else:
-        workbook = Workbook()
+/* ── Section title ── */
+QLabel#sectionTitle {{
+    color: {TEXT_MUTED};
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+}}
 
-    # Add a new sheet for the trip
-    sheet_name = f"Trip {len(workbook.sheetnames) + 1}"
-    sheet = workbook.create_sheet(title=sheet_name)
+/* ── Labels ── */
+QLabel#fieldLabel {{
+    color: {TEXT};
+    font-size: 13px;
+    font-weight: 500;
+}}
 
-    # Write trip data to the sheet
-    headers = ["Leg", "Description", "Distance (km)","Ltrs/Km", "Fuel Needed (liters)", "Fuel Price ", "Cost"]
-    sheet.append(headers)
-    for leg in trip_data["legs"]:
-        sheet.append(leg)
-    sheet.append([])
-    sheet.append(["Total Distance (km)", trip_data["total_distance"]])
-    sheet.append(["Total Fuel Needed (liters)", trip_data["total_fuel"]])
-    sheet.append(["Total Trip Cost ", trip_data["total_cost"]])
+/* ── Text inputs ── */
+QLineEdit, QTextEdit, QComboBox {{
+    background: {INPUT_BG};
+    border: 1px solid {BORDER};
+    border-radius: 7px;
+    color: {TEXT};
+    font-size: 13px;
+    padding: 8px 12px;
+    selection-background-color: {ACCENT};
+}}
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus {{
+    border: 1px solid {BORDER_FOCUS};
+}}
+QLineEdit::placeholder, QTextEdit::placeholder {{
+    color: {TEXT_MUTED};
+}}
 
-    # Save the workbook
-    workbook.save(file_path)
+/* ── Combobox dropdown ── */
+QComboBox::drop-down {{
+    border: none;
+    width: 28px;
+}}
+QComboBox::down-arrow {{
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid {TEXT_MUTED};
+    margin-right: 8px;
+}}
+QComboBox QAbstractItemView {{
+    background: {CARD};
+    border: 1px solid {BORDER};
+    border-radius: 7px;
+    color: {TEXT};
+    selection-background-color: {ACCENT};
+    outline: none;
+    padding: 4px;
+}}
 
-def calculate_trip():
-    try:
-        # Get user inputs
-        activity_name = activity_var.get().strip()
-        if not activity_name:
-            raise Exception("Please provide an activity name.")
-        origin = origin_entry.get()
-        stops = [stop.strip() for stop in stops_text.get("1.0", tk.END).splitlines() if stop.strip()]
-        fuel_efficiency = float(fuel_efficiency_entry.get())
-        fuel_price = float(fuel_price_entry.get())
-        round_trip = round_trip_var.get()
+/* ── Checkboxes ── */
+QCheckBox {{
+    color: {TEXT};
+    font-size: 13px;
+    spacing: 8px;
+}}
+QCheckBox::indicator {{
+    width: 17px;
+    height: 17px;
+    border-radius: 5px;
+    border: 1px solid {BORDER};
+    background: {INPUT_BG};
+}}
+QCheckBox::indicator:checked {{
+    background: {ACCENT};
+    border: 1px solid {ACCENT};
+    image: none;
+}}
+QCheckBox::indicator:hover {{
+    border: 1px solid {ACCENT};
+}}
 
-        # Fetch coordinates and exact names for all locations
-        locations = [origin] + stops
-        coordinates = []
-        location_names = []
-        for loc in locations:
-            coord, name = get_coordinates(loc)
-            coordinates.append(coord)
-            location_names.append(name)
+/* ── Primary button ── */
+QPushButton#primaryBtn {{
+    background: {ACCENT};
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 24px;
+    letter-spacing: 0.3px;
+}}
+QPushButton#primaryBtn:hover {{
+    background: {ACCENT_HOVER};
+}}
+QPushButton#primaryBtn:pressed {{
+    background: #2a6bc5;
+}}
+QPushButton#primaryBtn:disabled {{
+    background: {BORDER};
+    color: {TEXT_MUTED};
+}}
 
-        # Calculate distances and fuel for each leg
-        results = f"Trip saved under activity: {activity_name}\n\n"
-        total_distance = 0
-        trip_legs = []
-        for i in range(len(coordinates) - 1):
-            leg_distance = get_road_distance(coordinates[i], coordinates[i + 1])
-            total_distance += leg_distance
-            fuel_needed_leg = calculate_fuel_needed(leg_distance, fuel_efficiency)
-            leg_cost = fuel_needed_leg * fuel_price
-            trip_legs.append([f"Leg {i + 1}", f"{location_names[i]} to {location_names[i + 1]}", leg_distance, fuel_efficiency, fuel_needed_leg, fuel_price, leg_cost])
+/* ── Results box ── */
+QFrame#resultsCard {{
+    background: {CARD};
+    border: 1px solid {BORDER};
+    border-radius: 10px;
+}}
+QLabel#resultsText {{
+    color: {TEXT};
+    font-size: 13px;
+    line-height: 1.7;
+}}
+QLabel#resultsEmpty {{
+    color: {TEXT_MUTED};
+    font-size: 13px;
+}}
 
-            results += (f"Leg {i + 1}: {location_names[i]} → {location_names[i + 1]}\n"
-                        f"  Distance: {leg_distance:.2f} km\n"
-                        f"  Fuel Needed: {fuel_needed_leg:.2f} liters\n\n")
-            
+/* ── Divider ── */
+QFrame#divider {{
+    background: {BORDER};
+    max-height: 1px;
+}}
+"""
 
-        # Add round trip distance if enabled
-        if round_trip:
-            return_distance = get_road_distance(coordinates[-1], coordinates[0])
-            total_distance += return_distance
-            fuel_needed_leg = calculate_fuel_needed(return_distance, fuel_efficiency)
-            leg_cost = fuel_needed_leg * fuel_price
-            trip_legs.append(["Return Leg", f"{location_names[-1]} to {location_names[0]}", return_distance, fuel_efficiency, fuel_needed_leg, fuel_price, leg_cost])
-            results += (f"Return Leg: {location_names[-1]} → {location_names[0]}\n"
-                        f"  Distance: {return_distance:.2f} km\n"
-                        f"  Fuel Needed: {fuel_needed_leg:.2f} liters\n\n")
 
-        # Calculate total fuel and cost
-        total_fuel_needed = calculate_fuel_needed(total_distance, fuel_efficiency)
-        total_cost = total_fuel_needed * fuel_price
+def make_card() -> QFrame:
+    f = QFrame()
+    f.setObjectName("card")
+    return f
 
-        # Save trip data to Excel
-        trip_data = {
-            "legs": trip_legs,
-            "total_distance": total_distance,
-            "total_fuel": total_fuel_needed,
-            "total_cost": total_cost,
-        }
-        save_trip_to_excel(activity_name, trip_data)
 
-        # Display results
-        results += (f"Total Distance: {total_distance:.2f} km\n"
-                   f"Total Fuel Needed: {total_fuel_needed:.2f} liters\n"
-                   f"Total Trip Cost: {total_cost:.2f} ")
-        results_text.set(results)
-    except Exception as e:
-        messagebox.showerror("Error", str(e))
+def section_title(text: str) -> QLabel:
+    lbl = QLabel(text.upper())
+    lbl.setObjectName("sectionTitle")
+    return lbl
 
-# GUI Setup
-root = tk.Tk()
-root.title("Trip Calculator")
-root.geometry("600x700")
 
-# Add icon to the app
+def field_label(text: str) -> QLabel:
+    lbl = QLabel(text)
+    lbl.setObjectName("fieldLabel")
+    return lbl
 
-root.iconbitmap(os.path.join(base_dr, "/AppIcon.icns"))
 
-tk.Label(root, text="Activity:").pack(pady=5)
-activities = load_activities()
-activity_var = tk.StringVar()
-activity_dropdown = ttk.Combobox(root, textvariable=activity_var, values=list(activities.keys()), width=50)
-activity_dropdown.pack()
+class TripCalculator(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Trip Calculator")
+        self.setMinimumSize(560, 700)
+        self.resize(600, 760)
+        self.setStyleSheet(STYLESHEET)
 
-tk.Label(root, text="Origin:").pack(pady=5)
-origin_entry = tk.Entry(root, width=50)
-origin_entry.pack()
+        try:
+            self.setWindowIcon(QIcon(os.path.join(base_dir, "AppIcon.icns")))
+        except Exception:
+            pass
 
-tk.Label(root, text="Stops (one per line):").pack(pady=5)
-stops_text = tk.Text(root, height=5, width=50)
-stops_text.pack()
+        self._build_ui()
 
-tk.Label(root, text="Fuel Efficiency (km/l):").pack(pady=5)
-fuel_efficiency_entry = tk.Entry(root, width=20)
-fuel_efficiency_entry.pack()
+    # ── UI construction ────────────────────────────────────────────────────────
 
-tk.Label(root, text="Fuel Price :").pack(pady=5)
-fuel_price_entry = tk.Entry(root, width=20)
-fuel_price_entry.pack()
+    def _build_ui(self):
+        root = QWidget()
+        root.setObjectName("root")
+        self.setCentralWidget(root)
 
-# Round Trip Checkbox
-round_trip_var = tk.BooleanVar()
-round_trip_checkbox = tk.Checkbutton(root, text="Round Trip", variable=round_trip_var)
-round_trip_checkbox.pack(pady=5)
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-# Calculate Button
-tk.Button(root, text="Calculate Trip", command=calculate_trip).pack(pady=10)
+        # ── Header ──
+        header = self._make_header()
+        outer.addWidget(header)
 
-# Results Display
-results_text = tk.StringVar()
-results_label = tk.Label(root, textvariable=results_text, justify="left", wraplength=550)
-results_label.pack(pady=10)
+        # ── Scrollable body ──
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
 
-root.mainloop()
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(24, 20, 24, 28)
+        body_layout.setSpacing(16)
+
+        body_layout.addWidget(self._make_activity_card())
+        body_layout.addWidget(self._make_route_card())
+        body_layout.addWidget(self._make_fuel_card())
+        body_layout.addWidget(self._make_options_card())
+        body_layout.addWidget(self._make_calculate_button())
+        body_layout.addWidget(self._make_results_card())
+        body_layout.addStretch()
+
+        scroll.setWidget(body)
+        outer.addWidget(scroll)
+
+    def _make_header(self) -> QWidget:
+        w = QWidget()
+        w.setFixedHeight(64)
+        w.setStyleSheet(f"background: {SURFACE}; border-bottom: 1px solid {BORDER};")
+
+        layout = QHBoxLayout(w)
+        layout.setContentsMargins(24, 0, 24, 0)
+
+        title = QLabel("Trip Calculator")
+        title.setStyleSheet(f"color: {TEXT}; font-size: 17px; font-weight: 700; background: transparent;")
+
+        subtitle = QLabel("Fuel · Distance · Cost")
+        subtitle.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px; background: transparent;")
+
+        layout.addWidget(title)
+        layout.addStretch()
+        layout.addWidget(subtitle)
+        return w
+
+    def _make_activity_card(self) -> QFrame:
+        card = make_card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(10)
+
+        layout.addWidget(section_title("Activity"))
+
+        lbl = field_label("Select or type an activity name")
+        layout.addWidget(lbl)
+
+        activities = load_activities()
+        self.activity_combo = QComboBox()
+        self.activity_combo.setEditable(True)
+        self.activity_combo.addItems(list(activities.keys()))
+        self.activity_combo.setPlaceholderText("e.g. Client Visit")
+        self.activity_combo.setFixedHeight(38)
+        layout.addWidget(self.activity_combo)
+
+        return card
+
+    def _make_route_card(self) -> QFrame:
+        card = make_card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(10)
+
+        layout.addWidget(section_title("Route"))
+
+        layout.addWidget(field_label("Origin"))
+        self.origin_entry = QLineEdit()
+        self.origin_entry.setPlaceholderText("e.g. Kampala, Uganda")
+        self.origin_entry.setFixedHeight(38)
+        layout.addWidget(self.origin_entry)
+
+        layout.addSpacing(4)
+        layout.addWidget(field_label("Stops"))
+        hint = QLabel("One location per line")
+        hint.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
+        layout.addWidget(hint)
+        self.stops_text = QTextEdit()
+        self.stops_text.setPlaceholderText("Kampala\nNairobi\nDar es Salaam")
+        self.stops_text.setFixedHeight(100)
+        layout.addWidget(self.stops_text)
+
+        return card
+
+    def _make_fuel_card(self) -> QFrame:
+        card = make_card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(10)
+
+        layout.addWidget(section_title("Fuel"))
+
+        row = QHBoxLayout()
+        row.setSpacing(12)
+
+        left = QVBoxLayout()
+        left.setSpacing(6)
+        left.addWidget(field_label("Efficiency (km/L)"))
+        self.fuel_eff_entry = QLineEdit()
+        self.fuel_eff_entry.setPlaceholderText("e.g. 12.0")
+        self.fuel_eff_entry.setFixedHeight(38)
+        left.addWidget(self.fuel_eff_entry)
+
+        right = QVBoxLayout()
+        right.setSpacing(6)
+        right.addWidget(field_label("Price per Litre"))
+        self.fuel_price_entry = QLineEdit()
+        self.fuel_price_entry.setPlaceholderText("e.g. 1000")
+        self.fuel_price_entry.setFixedHeight(38)
+        right.addWidget(self.fuel_price_entry)
+
+        row.addLayout(left)
+        row.addLayout(right)
+        layout.addLayout(row)
+
+        return card
+
+    def _make_options_card(self) -> QFrame:
+        card = make_card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(12)
+
+        layout.addWidget(section_title("Options"))
+
+        self.round_trip_cb = QCheckBox("Round Trip")
+        self.round_trip_cb.setChecked(True)
+
+        self.save_excel_cb = QCheckBox("Save to Excel")
+        self.save_excel_cb.setChecked(True)
+
+        self.register_cb = QCheckBox("Register Activity")
+        self.register_cb.setChecked(True)
+
+        layout.addWidget(self.round_trip_cb)
+        layout.addWidget(self.save_excel_cb)
+        layout.addWidget(self.register_cb)
+
+        return card
+
+    def _make_calculate_button(self) -> QPushButton:
+        btn = QPushButton("Calculate Trip")
+        btn.setObjectName("primaryBtn")
+        btn.setFixedHeight(46)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.clicked.connect(self._calculate_trip)
+        self.calc_btn = btn
+        return btn
+
+    def _make_results_card(self) -> QFrame:
+        card = QFrame()
+        card.setObjectName("resultsCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(8)
+
+        hdr = QHBoxLayout()
+        hdr.addWidget(section_title("Results"))
+        hdr.addStretch()
+        layout.addLayout(hdr)
+
+        divider = QFrame()
+        divider.setObjectName("divider")
+        divider.setFixedHeight(1)
+        layout.addWidget(divider)
+
+        self.results_label = QLabel("Run a calculation to see results here.")
+        self.results_label.setObjectName("resultsEmpty")
+        self.results_label.setWordWrap(True)
+        self.results_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.results_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(self.results_label)
+
+        return card
+
+    # ── Logic ──────────────────────────────────────────────────────────────────
+
+    def _calculate_trip(self):
+        try:
+            origin = self.origin_entry.text().strip()
+            stops_raw = self.stops_text.toPlainText().splitlines()
+            stops = [s.strip() for s in stops_raw if s.strip()]
+            fuel_eff = float(self.fuel_eff_entry.text().strip())
+            fuel_price = float(self.fuel_price_entry.text().strip())
+            round_trip = self.round_trip_cb.isChecked()
+            save_to_excel = self.save_excel_cb.isChecked()
+            register_activity = self.register_cb.isChecked()
+            activity_name = self.activity_combo.currentText().strip()
+
+            if register_activity and not activity_name:
+                raise ValueError("Please provide an activity name.")
+
+            def file_dialog_func():
+                path, _ = QFileDialog.getSaveFileName(
+                    self, "Save Excel File", "", "Excel Files (*.xlsx)"
+                )
+                return path
+
+            self.calc_btn.setEnabled(False)
+            self.calc_btn.setText("Calculating…")
+            QApplication.processEvents()
+
+            results = process_trip(
+                activity_name=activity_name,
+                origin=origin,
+                stops=stops,
+                fuel_efficiency=fuel_eff,
+                fuel_price=fuel_price,
+                round_trip=round_trip,
+                file_dialog_func=file_dialog_func,
+                save_to_excel=save_to_excel,
+                register_activity=register_activity,
+            )
+
+            self.results_label.setObjectName("resultsText")
+            self.results_label.setStyleSheet(
+                f"color: {TEXT}; font-size: 13px; line-height: 1.8;"
+            )
+            self.results_label.setText(str(results))
+
+        except ValueError as e:
+            QMessageBox.warning(self, "Input Error", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+        finally:
+            self.calc_btn.setEnabled(True)
+            self.calc_btn.setText("Calculate Trip")
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+
+    # Dark palette baseline so native widgets pick up dark colours
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor(BG))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Base, QColor(INPUT_BG))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(SURFACE))
+    palette.setColor(QPalette.ColorRole.Text, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Button, QColor(CARD))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(TEXT))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(ACCENT))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    app.setPalette(palette)
+
+    win = TripCalculator()
+    win.show()
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

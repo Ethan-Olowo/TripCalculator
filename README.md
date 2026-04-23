@@ -1,6 +1,6 @@
 # Trip Calculator
 
-Trip Calculator is a Python application that calculates the total fuel needed and the total cost for a trip based on the origin, stops, fuel efficiency, and fuel price. The application uses the OpenRouteService API to get road distances.
+**Trip Calculator** is a Python desktop application that helps you estimate the total fuel required and the cost for a trip based on your route, stops, fuel efficiency, and fuel price. It features a user-friendly GUI built with Tkinter and leverages the OpenRouteService API for accurate road distances.
 
 ## Features
 
@@ -8,67 +8,63 @@ Trip Calculator is a Python application that calculates the total fuel needed an
 - Calculate total trip cost
 - Save trip data to an Excel file
 - Load and save activities
-- GUI built with Tkinter
+- Simple GUI (Tkinter)
 
 ## Requirements
 
 - Python 3.9+
 - Tkinter
-- Requests
-- Openpyxl
+- requests
+- openpyxl
 
-## Installation
+## Setup & Installation
 
-1. Clone the repository:
+1. **Clone the repository:**
 
    ```sh
    git clone https://github.com/Ethan-Olowo/trip-calculator.git
    cd trip-calculator
-
    ```
 
-2. Install the required packages:
-   pip install -r requirements.txt
+2. **Create and activate a virtual environment (recommended):**
+
+   On macOS/Linux:
+   ```sh
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+   On Windows:
+   ```sh
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+
+3. **Install the required packages:**
+
+   ```sh
+   pip install -r Requirements.txt
+   ```
+
+4. **Configuration:**
+   - Rename `config.example.py` to `config.py`.
+   - Open `config.py` and set your OpenRouteService API key in the `ORS_API_KEY` variable.
 
 ## Usage
 
-1. Run the application:
-
+1. **Run the application:**
    ```sh
    python TripCalc.py
    ```
 
-2. Fill in the required fields in the GUI:
-
+2. **Using the GUI:**
    - Select an activity
    - Enter the origin
    - Enter stops (one per line)
    - Enter fuel efficiency (km/l)
-   - Enter fuel price 
-   - Check the "Round Trip" checkbox if applicable
-
-3. Click the "Calculate" button to get the total fuel needed and total trip cost.
-
-## Configuration
-
-- Rename config.example.py to config.py
-- OpenRouteService API Key: Update the ORS_API_KEY variable in config.py with your own API key.
-
-## Usage
-
-1. Run the application
-   python TripCalc.py
-
-2. Fill in the required fields in the GUI:
-
-- Select an activity
-- Enter the origin
-- Enter stops (one per line)
-- Enter fuel efficiency (km/l)
-- Enter fuel price 
-- Check the "Round Trip" checkbox if applicable
-
-3. Click the "Calculate" button to get the total fuel needed and total trip cost.
+   - Enter fuel price
+   - Check the "Round Trip" box if needed
+   - Click "Calculate" to see the total fuel needed and trip cost
 
 ## License
 
