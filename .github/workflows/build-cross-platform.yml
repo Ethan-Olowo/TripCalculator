@@ -1,0 +1,65 @@
+name: Build TripCalc (macOS, Windows, Linux)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_name: tripcalculator-macos
+            package_path: TripCalculator-macos.zip
+          - os: windows-latest
+            artifact_name: tripcalculator-windows
+            package_path: TripCalculator-windows.zip
+          - os: ubuntu-latest
+            artifact_name: tripcalculator-linux
+            package_path: TripCalculator-linux.tar.gz
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r Requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller --clean --noconfirm TripCalculator.spec
+
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent dist/TripCalculator.app TripCalculator-macos.zip
+
+      - name: Package Windows app
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/TripCalculator -DestinationPath TripCalculator-windows.zip -Force
+
+      - name: Package Linux app
+        if: runner.os == 'Linux'
+        run: |
+          tar -czf TripCalculator-linux.tar.gz -C dist TripCalculator
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.package_path }}
