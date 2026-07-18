@@ -365,6 +365,13 @@ class TripCalculator(QMainWindow):
         self._apply_theme(self.current_theme)
         self._load_saved_settings()
 
+    def _centered_icon_size(self, button, ratio=0.7):
+        size = max(14, int(min(button.width(), button.height()) * ratio))
+        # Even-sized icons avoid half-pixel centering drift in 30x30 buttons.
+        if size % 2 != 0:
+            size -= 1
+        return size
+
     def _build_ui(self):
         root = QWidget()
         root.setObjectName("root")
@@ -483,8 +490,8 @@ class TripCalculator(QMainWindow):
     def _refresh_header_icons(self):
         colors = THEMES[self.current_theme]
         icon_color = colors["text"]
-        home_size = int(min(self.main_nav_btn.width(), self.main_nav_btn.height()) * 0.6)
-        settings_size = int(min(self.settings_nav_btn.width(), self.settings_nav_btn.height()) * 0.6)
+        home_size = self._centered_icon_size(self.main_nav_btn)
+        settings_size = self._centered_icon_size(self.settings_nav_btn)
 
         self.main_nav_btn.setIconSize(QSize(home_size, home_size))
         self.settings_nav_btn.setIconSize(QSize(settings_size, settings_size))
@@ -683,10 +690,7 @@ class TripCalculator(QMainWindow):
         # Show the mode user can switch to: sun for light mode, moon for dark mode.
         colors = THEMES[self.current_theme]
         icon_color = colors["text"]
-        theme_size = int(min(
-            self.theme_toggle_btn.width(),
-            self.theme_toggle_btn.height()
-        ) * 0.6)
+        theme_size = self._centered_icon_size(self.theme_toggle_btn)
         self.theme_toggle_btn.setIconSize(QSize(theme_size, theme_size))
         if self.current_theme == "dark":
             self.theme_toggle_btn.setIcon(self._tinted_icon(self.sun_icon_path, icon_color, size=theme_size))
