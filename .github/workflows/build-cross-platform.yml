@@ -5,7 +5,13 @@ on:
   push:
     branches:
       - main
+      - master
+    tags:
+      - 'v*'
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -63,3 +69,26 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.package_path }}
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Publish release with assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release-assets/tripcalculator-macos/TripCalculator-macos.zip
+            release-assets/tripcalculator-windows/TripCalculator-windows.zip
+            release-assets/tripcalculator-linux/TripCalculator-linux.tar.gz
